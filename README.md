@@ -12,7 +12,7 @@ Note: This is my first project and some German terms are included, but it is gua
 
 ## How to use
 1. Download the repository
-2. Run the WLANJumper.exe 
+2. Run the WLANJumper.exe or the WLANjumper.bat 
 3. The program will automatically list your authorized networks and start monitoring
 
 ## Technical Details
