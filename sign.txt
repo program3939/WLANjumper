@@ -1,0 +1,25 @@
+============================================================
+                     WLAN JUMPER 
+============================================================
+
+Thank you for using WLAN Jumper! 
+This tool ensures you always have the best possible 
+connection by jumping between your networks automatically. 
+This is my first project. I'm still learning, so please go 
+easy on me! I can guarantee that the code is completely safe.
+(I'm German, so please excuse any German words in the code!)
+
+------------------------------------------------------------
+QUICK GUIDE:
+------------------------------------------------------------
+* STATUS: The program monitors your ping every second.
+* AUTO-SWITCH: If your ping hits >1200ms or your internet 
+  drops, it jumps to the strongest WiFi nearby.
+
+------------------------------------------------------------
+CREDITS: ATY
+------------------------------------------------------------
+Built for speed. Built for stability. 
+Thanks for using WLAN Jumper!
+
+============================================================
