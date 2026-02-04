@@ -1,7 +1,6 @@
 # --- CONFIGURATION & SETUP ---
 $PingTarget = "8.8.8.8"
-$Interval = 1       
-$MaxPing = 1200     
+$MaxPing = 1200      
 
 # Logging Setup
 $LogDir = "$PSScriptRoot\Logs"
@@ -36,43 +35,69 @@ Write-Host "       WLAN JUMPER - PROFESSIONAL" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 Log-Write "System started. Logging to: $LogFile" -Color Gray
 
-# --- USER INPUT: FAILURE LIMIT ---
+# --- USER INPUT 1: FAILURE LIMIT ---
 $ValidInput = $false
 $MaxFailures = 3 # Default
 while (-not $ValidInput) {
     try {
-        $InputStr = Read-Host "-> Enter max consecutive failures before jump (1-12) [Default: 3]"
+        $InputStr = Read-Host "-> Anzahl der Fehlversuche vor dem Wechsel (1-12) [Empfohlen: 3]"
         if ([string]::IsNullOrWhiteSpace($InputStr)) {
             $ValidInput = $true # Keep default
         } elseif ($InputStr -match "^\d+$" -and [int]$InputStr -ge 1 -and [int]$InputStr -le 12) {
             $MaxFailures = [int]$InputStr
             $ValidInput = $true
         } else {
-            Write-Host "[!] Invalid input. Please enter a number between 1 and 12." -ForegroundColor Red
+            Write-Host "[!] Bitte eine Zahl zwischen 1 und 12 eingeben." -ForegroundColor Red
         }
     } catch {
-        Write-Host "[!] Error processing input." -ForegroundColor Red
+        Write-Host "[!] Fehler bei der Eingabe." -ForegroundColor Red
     }
 }
-Log-Write "Configuration set: Jump after $MaxFailures failed attempts." -Color Yellow
-Log-Write "Latency Threshold: $MaxPing ms" -Color Gray
 
-# --- STEP 1: Get Saved Profiles (International Method) ---
-Log-Write "Initializing Profile Scan..." -Color Gray
-# Get all profiles, look for the line with the profile name (Index 1 usually after split)
-# This ignores the "All User Profile" label and just takes the value after the colon.
+# --- USER INPUT 2: INTERVAL (NEU) ---
+$ValidInterval = $false
+$Interval = 3 # Default Empfehlung
+while (-not $ValidInterval) {
+    try {
+        $InputInt = Read-Host "-> Scan-Intervall in Sekunden (1-12) [Empfohlen: 3]"
+        if ([string]::IsNullOrWhiteSpace($InputInt)) {
+            $ValidInterval = $true # Keep default
+        } elseif ($InputInt -match "^\d+$" -and [int]$InputInt -ge 1 -and [int]$InputInt -le 12) {
+            $Interval = [int]$InputInt
+            
+            # WARNUNG BEI 1 SEKUNDE
+            if ($Interval -eq 1) {
+                Write-Host "WARNUNG: Ein Intervall von 1 Sekunde kann zu starken 'Lag Spikes' in Spielen führen!" -ForegroundColor Red
+                Write-Host "Das System wird aggressiv pingen. Nutzung auf eigene Gefahr." -ForegroundColor Red
+            }
+            
+            $ValidInterval = $true
+        } else {
+            Write-Host "[!] Bitte eine Zahl zwischen 1 und 12 eingeben." -ForegroundColor Red
+        }
+    } catch {
+        Write-Host "[!] Fehler bei der Eingabe." -ForegroundColor Red
+    }
+}
+
+Log-Write "Konfiguration: Wechsel nach $MaxFailures Fehlern." -Color Yellow
+Log-Write "Konfiguration: Ping alle $Interval Sekunden." -Color Yellow
+
+# --- STEP 1: INITIAL SCAN (NUR EINMALIG!) ---
+Log-Write "Erstelle Liste bekannter Netzwerke (Einmaliger Scan)..." -Color Gray
+
+# Liste der gespeicherten Profile holen
 $SavedProfiles = netsh wlan show profiles | Where-Object { $_ -match ":\s+" } | ForEach-Object {
     $_.Split(":")[1].Trim()
 }
 
-# --- STEP 2: Scan for nearby networks ---
-Log-Write "Scanning for authorized nearby networks..." -Color Gray
+# Verfügbare Netzwerke scannen (Dies verursacht kurz Lag, aber nur beim Start!)
 $ScanResult = netsh wlan show networks
 $NearbySSIDs = $ScanResult | Select-String "SSID" | ForEach-Object {
     ($_.ToString() -split ":")[1].Trim()
 }
 
-# Match nearby networks with saved profiles
+# Abgleich: Welche verfügbaren Netze kennen wir?
 $MyAvailableNetworks = @()
 foreach ($SSID in $NearbySSIDs) {
     if ($SavedProfiles -contains $SSID) {
@@ -80,31 +105,31 @@ foreach ($SSID in $NearbySSIDs) {
     }
 }
 
-# --- STEP 3: Validate List ---
+# --- STEP 2: Validierung ---
 if ($MyAvailableNetworks.Count -eq 0) {
-    Log-Write "No authorized networks found nearby. Trying to keep current connection." -Color Red
-    # Fallback: Add current network if connected
+    Log-Write "Keine bekannten Netzwerke in Reichweite. Nutze aktuelles Netz als Fallback." -Color Red
     $CurrentSSID = (netsh wlan show interfaces | Select-String "^\s+SSID" | ForEach-Object { ($_ -split ":")[1].Trim() })
     if ($CurrentSSID) {
         $MyAvailableNetworks = @($CurrentSSID)
-        Log-Write "Added current network to whitelist: $CurrentSSID" -Color Gray
+        Log-Write "Aktuelles Netzwerk zur Liste hinzugefügt: $CurrentSSID" -Color Gray
     } else {
-        Log-Write "Critical Error: No networks available. Exiting." -Color Red
+        Log-Write "KRITISCHER FEHLER: Keine Netzwerke gefunden. Beende Programm." -Color Red
         Start-Sleep 5
         exit
     }
 }
 
-Log-Write "Success: Found $($MyAvailableNetworks.Count) authorized networks." -Color Green
+Log-Write "Bereit: $($MyAvailableNetworks.Count) Netzwerke gespeichert." -Color Green
 $MyAvailableNetworks | ForEach-Object { Write-Host "   [*] $_" -ForegroundColor White }
 Write-Host "---------------------------------------------"
-Log-Write "Monitoring active..." -Color Cyan
+Log-Write "Überwachung aktiv (Passiver Modus)..." -Color Cyan
 
 # --- MAIN LOOP ---
 $FailCount = 0
 
 while ($true) {
     try {
+        # Nur Pingen, NICHT scannen! Das verhindert Lags im Normalbetrieb.
         $PingResult = Test-Connection -ComputerName $PingTarget -Count 1 -ErrorAction SilentlyContinue
         $CurrentPing = if ($PingResult) { $PingResult.ResponseTime } else { $null }
 
@@ -112,50 +137,44 @@ while ($true) {
         $ConnectionOK = ($PingResult -ne $null) -and ($CurrentPing -lt $MaxPing)
 
         if ($ConnectionOK) {
-            # Connection is GOOD
+            # Verbindung GUT
             if ($FailCount -gt 0) {
-                echo "" # New line after dots
-                Log-Write "Connection stabilized. Failure counter reset." -Color Green
+                echo "" 
+                Log-Write "Verbindung stabilisiert. Counter reset." -Color Green
             }
-            $FailCount = 0 # Reset counter
+            $FailCount = 0 
             Write-Host "." -NoNewline -ForegroundColor Green
         }
         else {
-            # Connection is BAD
-            echo "" # Break the dot line
+            # Verbindung SCHLECHT
+            echo "" 
             $FailCount++
             
             if (-not $PingResult) {
-                Log-Write "[Attempt $FailCount/$MaxFailures] Connection Lost!" -Color Red
+                Log-Write "[Versuch $FailCount/$MaxFailures] Verbindung verloren!" -Color Red
             } else {
-                Log-Write "[Attempt $FailCount/$MaxFailures] High Latency: $CurrentPing ms" -Color Yellow
+                Log-Write "[Versuch $FailCount/$MaxFailures] Hoher Ping: $CurrentPing ms" -Color Yellow
             }
 
-            # --- JUMP TRIGGER ---
+            # --- JUMP TRIGGER (Nur hier wird gescannt!) ---
             if ($FailCount -ge $MaxFailures) {
-                Log-Write "Threshold reached! Initiating WLAN Jump..." -Color Magenta
+                Log-Write "Limit erreicht! Starte Notfall-Scan & Wechsel..." -Color Magenta
                 
-                # 1. Scan Signals (Language independent regex for %)
+                # Jetzt scannen wir erst (verursacht Lag, aber Internet ist eh weg)
                 $BssidScan = netsh wlan show networks mode=bssid
                 $BestChoice = $null
                 $BestSignal = 0
 
                 foreach ($NetName in $MyAvailableNetworks) {
-                    # Escape special chars in SSID for Regex
                     $EscapedNet = [regex]::Escape($NetName)
                     
-                    # check if net exists in scan
                     if ($BssidScan -match $EscapedNet) {
-                        # Find the block for this network
                         $NetBlock = $BssidScan | Select-String -Pattern "SSID.*$EscapedNet" -Context 0,15
                         
                         if ($NetBlock) {
-                            # Extract Signal % from the context lines using Regex "Num%"
                             foreach ($line in $NetBlock.Context.PostContext) {
                                 if ($line -match "(\d+)%") {
                                     $SignalValue = [int]$matches[1]
-                                    
-                                    # Logic: Keep the strongest found so far
                                     if ($SignalValue -gt $BestSignal) {
                                         $BestSignal = $SignalValue
                                         $BestChoice = $NetName
@@ -167,11 +186,11 @@ while ($true) {
                 }
 
                 if ($BestChoice) {
-                    Log-Write "Jumping to strongest network: $BestChoice ($BestSignal%)" -Color Cyan
+                    Log-Write "Wechsle zum stärksten Netzwerk: $BestChoice ($BestSignal%)" -Color Cyan
                     netsh wlan connect name="$BestChoice"
                     
-                    # 2. WAIT FOR CONNECTION (Prevents immediate fail loop)
-                    Log-Write "Waiting for connection to establish..." -Color Gray
+                    # Warten bis Interface oben ist
+                    Log-Write "Warte auf Verbindung..." -Color Gray
                     $Retries = 0
                     while ($Retries -lt 10) {
                         Start-Sleep 1
@@ -179,12 +198,10 @@ while ($true) {
                         if ($Status) { break }
                         $Retries++
                     }
-                    Log-Write "Interface is up. Resuming monitoring." -Color Green
-                    
-                    # Reset Counter after jump attempt to give new net a chance
+                    Log-Write "Verbindung steht wieder. Überwachung läuft weiter." -Color Green
                     $FailCount = 0 
                 } else {
-                    Log-Write "Error: Could not determine a better network." -Color Red
+                    Log-Write "Fehler: Kein besseres Netzwerk gefunden." -Color Red
                 }
             }
         }
@@ -193,5 +210,6 @@ while ($true) {
         Log-Write "Script Error: $($_.Exception.Message)" -Color Red
     }
     
+    # Hier wird das variable Intervall genutzt
     Start-Sleep -Seconds $Interval
 }
