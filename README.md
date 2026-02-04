@@ -6,7 +6,6 @@ An open-source Windows tool that ensures you always stay connected. It automatic
 - **Smart Monitoring:** Checks your connection every second via Google DNS (8.8.8.8).
 - **Stability Control:** Customizable failure threshold (1-12 attempts) before jumping.
 - **Latency Protection:** Triggers a jump if ping consistently exceeds 1200ms.
-- **Universal Compatibility:** Language-independent logic (Works on German, English, and other Windows versions).
 - **Detailed Logging:** Saves every event in `WLANjumper > Logs` for session tracking.
 - **Security:** Only connects to networks you have already saved/authorized on your PC.
 
