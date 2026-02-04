@@ -1,6 +1,6 @@
 # WLAN Jumper (Beta)
 
-An open-source Windows tool that ensures you always stay connected. It automatically switches to the strongest authorized Wi-Fi if your connection drops or latency becomes unusable.
+An open-source Windows tool that ensures you always stay connected. It automatically switches to the strongest authorized **Wi-Fi** network if your connection drops or latency becomes unusable.
 
 ## Features
 - **Smart Monitoring:** Checks your connection every second via Google DNS (8.8.8.8).
@@ -17,11 +17,10 @@ An open-source Windows tool that ensures you always stay connected. It automatic
 
 ## Technical Details
 - **Core:** PowerShell script (`WLAN-Waechter.ps1`).
-- **Commands:** Uses `netsh` and `WMI/CIM` classes for language-agnostic signal scanning.
+- **Commands:** Uses Windows `netsh wlan` (the technical term for Wi-Fi management) and `WMI/CIM` classes for language-agnostic signal scanning.
 - **Lightweight:** Minimal CPU usage, no third-party installations required.
 
 ## Credits
-**Developed by ATY**
-Built for speed. Built for stability.
+**Developed by ATY** Built for speed. Built for stability.
 
 *Note: This is my first project. I am continuously learning and appreciate your feedback!*
