@@ -1,21 +1,28 @@
+# WLAN Jumper (Professional)
 
-# WLAN Jumper (Beta)
+An open-source Windows tool that ensures you always stay connected. It automatically switches to the strongest authorized Wi-Fi if your connection drops or latency becomes unusable.
 
-An open-source Windows tool that auto-switches to the strongest saved Wi-Fi if connection drops or ping hits 1200ms. It auto-scans authorized networks for intelligent signal jumping. Lightweight and safe to use. 
-
-Note: This is my first project and some German terms are included, but it is guaranteed safe. 
 ## Features
-- Automatic connection monitoring (every 1 second)
-- High-ping detection (switches if latency > 1200ms)
-- Smart Scan: Only considers networks you have previously saved on Windows
-- Universal support for German and English Windows versions
+- **Smart Monitoring:** Checks your connection every second via Google DNS (8.8.8.8).
+- **Stability Control:** Customizable failure threshold (1-12 attempts) before jumping.
+- **Latency Protection:** Triggers a jump if ping consistently exceeds 1200ms.
+- **Universal Compatibility:** Language-independent logic (Works on German, English, and other Windows versions).
+- **Detailed Logging:** Saves every event in `WLANjumper > Logs` for session tracking.
+- **Security:** Only connects to networks you have already saved/authorized on your PC.
 
 ## How to use
-1. Download the repository
-2. Run the WLANJumper.exe or the WLANjumper.bat 
-3. The program will automatically list your authorized networks and start monitoring
+1. Download the repository.
+2. Run `WLANJumper.exe` or `Start_WLAN_Jumper.bat`.
+3. Enter the number of allowed failures when prompted (Default is 3).
+4. The program will scan your environment and start protecting your connection.
 
 ## Technical Details
-The core logic is written in PowerShell. It uses the Windows Netsh command to scan signal strengths and manage connections. 
+- **Core:** PowerShell script (`WLAN-Waechter.ps1`).
+- **Commands:** Uses `netsh` and `WMI/CIM` classes for language-agnostic signal scanning.
+- **Lightweight:** Minimal CPU usage, no third-party installations required.
 
-**Note on External Services:** To verify internet connectivity, the tool sends a small ping request to Google's Public DNS (8.8.8.8). No third-party software installation is required.
+## Credits
+**Developed by ATY**
+Built for speed. Built for stability.
+
+*Note: This is my first project. I am continuously learning and appreciate your feedback!*
