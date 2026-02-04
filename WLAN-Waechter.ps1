@@ -34,70 +34,85 @@ Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host "       WLAN JUMPER - PROFESSIONAL" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 Log-Write "System started. Logging to: $LogFile" -Color Gray
+Write-Host ""
+
+# --- QUICK GUIDE (Tutorial) ---
+Write-Host "--- HOW IT WORKS ---" -ForegroundColor Yellow
+Write-Host "1. MAX FAILURES (The 'Patience')" -ForegroundColor White
+Write-Host "   -> How many pings must fail before switching networks." -ForegroundColor DarkGray
+Write-Host "   -> Recommended: 3 (Ignores small lag spikes)." -ForegroundColor Green
+Write-Host "   -> Aggressive:  1 (Switches immediately on error)." -ForegroundColor Red
+Write-Host ""
+Write-Host "2. INTERVAL (The 'Stopwatch')" -ForegroundColor White
+Write-Host "   -> How often the script checks your connection." -ForegroundColor DarkGray
+Write-Host "   -> Recommended: 3 Seconds (Best performance)." -ForegroundColor Green
+Write-Host "   -> Aggressive:  1 Second (Fastest, but may cause LAGS in games)." -ForegroundColor Red
+Write-Host "--------------------" -ForegroundColor Yellow
+Write-Host ""
 
 # --- USER INPUT 1: FAILURE LIMIT ---
 $ValidInput = $false
 $MaxFailures = 3 # Default
 while (-not $ValidInput) {
     try {
-        $InputStr = Read-Host "-> Anzahl der Fehlversuche vor dem Wechsel (1-12) [Empfohlen: 3]"
+        $InputStr = Read-Host "-> Enter Max Failures (1-12) [Default: 3]"
         if ([string]::IsNullOrWhiteSpace($InputStr)) {
             $ValidInput = $true # Keep default
         } elseif ($InputStr -match "^\d+$" -and [int]$InputStr -ge 1 -and [int]$InputStr -le 12) {
             $MaxFailures = [int]$InputStr
             $ValidInput = $true
         } else {
-            Write-Host "[!] Bitte eine Zahl zwischen 1 und 12 eingeben." -ForegroundColor Red
+            Write-Host "[!] Please enter a number between 1 and 12." -ForegroundColor Red
         }
     } catch {
-        Write-Host "[!] Fehler bei der Eingabe." -ForegroundColor Red
+        Write-Host "[!] Input error." -ForegroundColor Red
     }
 }
 
-# --- USER INPUT 2: INTERVAL (NEU) ---
+# --- USER INPUT 2: INTERVAL ---
 $ValidInterval = $false
-$Interval = 3 # Default Empfehlung
+$Interval = 3 # Default Recommendation
 while (-not $ValidInterval) {
     try {
-        $InputInt = Read-Host "-> Scan-Intervall in Sekunden (1-12) [Empfohlen: 3]"
+        $InputInt = Read-Host "-> Enter Scan Interval in seconds (1-12) [Default: 3]"
         if ([string]::IsNullOrWhiteSpace($InputInt)) {
             $ValidInterval = $true # Keep default
         } elseif ($InputInt -match "^\d+$" -and [int]$InputInt -ge 1 -and [int]$InputInt -le 12) {
             $Interval = [int]$InputInt
             
-            # WARNUNG BEI 1 SEKUNDE
+            # WARNING FOR 1 SECOND
             if ($Interval -eq 1) {
-                Write-Host "WARNUNG: Ein Intervall von 1 Sekunde kann zu starken 'Lag Spikes' in Spielen führen!" -ForegroundColor Red
-                Write-Host "Das System wird aggressiv pingen. Nutzung auf eigene Gefahr." -ForegroundColor Red
+                Write-Host "WARNING: An interval of 1 second can cause 'Lag Spikes' in online games!" -ForegroundColor Red
+                Write-Host "Use at your own risk." -ForegroundColor Red
             }
             
             $ValidInterval = $true
         } else {
-            Write-Host "[!] Bitte eine Zahl zwischen 1 und 12 eingeben." -ForegroundColor Red
+            Write-Host "[!] Please enter a number between 1 and 12." -ForegroundColor Red
         }
     } catch {
-        Write-Host "[!] Fehler bei der Eingabe." -ForegroundColor Red
+        Write-Host "[!] Input error." -ForegroundColor Red
     }
 }
 
-Log-Write "Konfiguration: Wechsel nach $MaxFailures Fehlern." -Color Yellow
-Log-Write "Konfiguration: Ping alle $Interval Sekunden." -Color Yellow
+Log-Write "Config: Switch after $MaxFailures failures." -Color Yellow
+Log-Write "Config: Ping every $Interval seconds." -Color Yellow
 
-# --- STEP 1: INITIAL SCAN (NUR EINMALIG!) ---
-Log-Write "Erstelle Liste bekannter Netzwerke (Einmaliger Scan)..." -Color Gray
+# --- STEP 1: INITIAL SCAN (ONE-TIME ONLY) ---
+Log-Write "Building network list (One-time scan)..." -Color Gray
 
-# Liste der gespeicherten Profile holen
+# Get saved profiles
 $SavedProfiles = netsh wlan show profiles | Where-Object { $_ -match ":\s+" } | ForEach-Object {
     $_.Split(":")[1].Trim()
 }
 
-# Verfügbare Netzwerke scannen (Dies verursacht kurz Lag, aber nur beim Start!)
+# Scan visible networks (Causes lag once, but acceptable at start)
 $ScanResult = netsh wlan show networks
 $NearbySSIDs = $ScanResult | Select-String "SSID" | ForEach-Object {
     ($_.ToString() -split ":")[1].Trim()
 }
 
-# Abgleich: Welche verfügbaren Netze kennen wir?
+# Compare: Which visible nets are known/saved?
 $MyAvailableNetworks = @()
 foreach ($SSID in $NearbySSIDs) {
     if ($SavedProfiles -contains $SSID) {
@@ -105,31 +120,31 @@ foreach ($SSID in $NearbySSIDs) {
     }
 }
 
-# --- STEP 2: Validierung ---
+# --- STEP 2: Validation ---
 if ($MyAvailableNetworks.Count -eq 0) {
-    Log-Write "Keine bekannten Netzwerke in Reichweite. Nutze aktuelles Netz als Fallback." -Color Red
+    Log-Write "No known networks found nearby. Using current connection as fallback." -Color Red
     $CurrentSSID = (netsh wlan show interfaces | Select-String "^\s+SSID" | ForEach-Object { ($_ -split ":")[1].Trim() })
     if ($CurrentSSID) {
         $MyAvailableNetworks = @($CurrentSSID)
-        Log-Write "Aktuelles Netzwerk zur Liste hinzugefügt: $CurrentSSID" -Color Gray
+        Log-Write "Added current network to whitelist: $CurrentSSID" -Color Gray
     } else {
-        Log-Write "KRITISCHER FEHLER: Keine Netzwerke gefunden. Beende Programm." -Color Red
+        Log-Write "CRITICAL ERROR: No networks available. Exiting." -Color Red
         Start-Sleep 5
         exit
     }
 }
 
-Log-Write "Bereit: $($MyAvailableNetworks.Count) Netzwerke gespeichert." -Color Green
+Log-Write "Ready: $($MyAvailableNetworks.Count) networks stored." -Color Green
 $MyAvailableNetworks | ForEach-Object { Write-Host "   [*] $_" -ForegroundColor White }
 Write-Host "---------------------------------------------"
-Log-Write "Überwachung aktiv (Passiver Modus)..." -Color Cyan
+Log-Write "Monitoring active (Passive Mode)..." -Color Cyan
 
 # --- MAIN LOOP ---
 $FailCount = 0
 
 while ($true) {
     try {
-        # Nur Pingen, NICHT scannen! Das verhindert Lags im Normalbetrieb.
+        # Only Ping, NO scanning! Prevents lags during normal operation.
         $PingResult = Test-Connection -ComputerName $PingTarget -Count 1 -ErrorAction SilentlyContinue
         $CurrentPing = if ($PingResult) { $PingResult.ResponseTime } else { $null }
 
@@ -137,30 +152,30 @@ while ($true) {
         $ConnectionOK = ($PingResult -ne $null) -and ($CurrentPing -lt $MaxPing)
 
         if ($ConnectionOK) {
-            # Verbindung GUT
+            # Connection GOOD
             if ($FailCount -gt 0) {
                 echo "" 
-                Log-Write "Verbindung stabilisiert. Counter reset." -Color Green
+                Log-Write "Connection stabilized. Failure counter reset." -Color Green
             }
             $FailCount = 0 
             Write-Host "." -NoNewline -ForegroundColor Green
         }
         else {
-            # Verbindung SCHLECHT
+            # Connection BAD
             echo "" 
             $FailCount++
             
             if (-not $PingResult) {
-                Log-Write "[Versuch $FailCount/$MaxFailures] Verbindung verloren!" -Color Red
+                Log-Write "[Attempt $FailCount/$MaxFailures] Connection Lost!" -Color Red
             } else {
-                Log-Write "[Versuch $FailCount/$MaxFailures] Hoher Ping: $CurrentPing ms" -Color Yellow
+                Log-Write "[Attempt $FailCount/$MaxFailures] High Latency: $CurrentPing ms" -Color Yellow
             }
 
-            # --- JUMP TRIGGER (Nur hier wird gescannt!) ---
+            # --- JUMP TRIGGER (Only scan HERE) ---
             if ($FailCount -ge $MaxFailures) {
-                Log-Write "Limit erreicht! Starte Notfall-Scan & Wechsel..." -Color Magenta
+                Log-Write "Threshold reached! Initiating emergency scan & jump..." -Color Magenta
                 
-                # Jetzt scannen wir erst (verursacht Lag, aber Internet ist eh weg)
+                # Scan now (Lags don't matter because connection is lost anyway)
                 $BssidScan = netsh wlan show networks mode=bssid
                 $BestChoice = $null
                 $BestSignal = 0
@@ -186,11 +201,11 @@ while ($true) {
                 }
 
                 if ($BestChoice) {
-                    Log-Write "Wechsle zum stärksten Netzwerk: $BestChoice ($BestSignal%)" -Color Cyan
+                    Log-Write "Jumping to strongest network: $BestChoice ($BestSignal%)" -Color Cyan
                     netsh wlan connect name="$BestChoice"
                     
-                    # Warten bis Interface oben ist
-                    Log-Write "Warte auf Verbindung..." -Color Gray
+                    # Wait for interface
+                    Log-Write "Waiting for connection..." -Color Gray
                     $Retries = 0
                     while ($Retries -lt 10) {
                         Start-Sleep 1
@@ -198,10 +213,10 @@ while ($true) {
                         if ($Status) { break }
                         $Retries++
                     }
-                    Log-Write "Verbindung steht wieder. Überwachung läuft weiter." -Color Green
+                    Log-Write "Connection re-established. Monitoring resumes." -Color Green
                     $FailCount = 0 
                 } else {
-                    Log-Write "Fehler: Kein besseres Netzwerk gefunden." -Color Red
+                    Log-Write "Error: No better network found." -Color Red
                 }
             }
         }
@@ -210,6 +225,6 @@ while ($true) {
         Log-Write "Script Error: $($_.Exception.Message)" -Color Red
     }
     
-    # Hier wird das variable Intervall genutzt
+    # Variable Interval
     Start-Sleep -Seconds $Interval
 }
