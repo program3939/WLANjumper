@@ -1,20 +1,21 @@
 @echo off
-title WLAN Jumper Professional
+title WLAN Jumper Professional - Launcher
 color 0B
 
-:: 1. AUTO-ADMIN: Fragt nach Admin-Rechten, wenn nicht vorhanden
+:: 1. AUTO-ADMIN CHECK
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo Requesting administrative privileges...
+    echo [!] Requesting administrative privileges...
     powershell -Command "Start-Process -FilePath '%0' -Verb RunAs"
     exit /b
 )
 
-:: 2. PFAD-FIX: Setzt den Fokus direkt auf den Ordner der Batch
+:: 2. PATH FIX & DIRECTORY SETUP
 cd /d "%~dp0"
+if not exist "Logs" mkdir "Logs"
 
 echo ============================================================
-echo                WLAN JUMPER IS NOW ACTIVE
+echo                 WLAN JUMPER IS LOADING...
 echo ============================================================
 echo.
 
@@ -24,7 +25,7 @@ set "FILENAME=WLAN-Waechter.ps1"
 if exist "%~dp0%FILENAME%" (
     set "FINAL_PATH=%~dp0%FILENAME%"
 ) else (
-    echo [!] Searching for %FILENAME%...
+    echo [!] Script not found in root. Searching recursively...
     for /r "%USERPROFILE%" %%F in (*) do (
         if "%%~nxF"=="%FILENAME%" (
             set "FINAL_PATH=%%~fF"
@@ -35,9 +36,9 @@ if exist "%~dp0%FILENAME%" (
 
 :launch
 if defined FINAL_PATH (
-    :: Startet PowerShell versteckt oder im Vordergrund, exakt wie die EXE
-    powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Normal -File "%FINAL_PATH%"
+    :: Starts PowerShell in the current window (no hidden window)
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%FINAL_PATH%"
 ) else (
-    echo [ERROR] Script not found! Please keep WLAN-Waechter.ps1 on your PC.
+    echo [ERROR] %FILENAME% not found! Please place it in the same folder.
     pause
 )
