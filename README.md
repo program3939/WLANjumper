@@ -1,4 +1,4 @@
-# WLAN Jumper (Professional)
+# WLAN Jumper (Beta)
 
 An open-source Windows tool that ensures you always stay connected. It automatically switches to the strongest authorized Wi-Fi if your connection drops or latency becomes unusable.
 
