@@ -8,6 +8,10 @@ if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out
 $Timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $LogFile = "$LogDir\Session_$Timestamp.log"
 
+# NEW: Network Health Tracking
+$NetworkBlacklist = @{}  # Key: SSID, Value: Timestamp of last failure
+$BlacklistDuration = 300  # 5 minutes cooldown before retrying failed network
+
 # Function: Write to Console and Logfile
 function Log-Write {
     param (
@@ -29,9 +33,53 @@ function Log-Write {
     }
 }
 
+# NEW: Function to verify internet connectivity
+function Test-InternetConnectivity {
+    param (
+        [int]$TimeoutSeconds = 8
+    )
+    
+    try {
+        # Test multiple reliable servers
+        $Targets = @("8.8.8.8", "1.1.1.1", "208.67.222.222")
+        $SuccessCount = 0
+        
+        foreach ($Target in $Targets) {
+            $PingTest = Test-Connection -ComputerName $Target -Count 1 -ErrorAction SilentlyContinue
+            if ($PingTest -and $PingTest.ResponseTime -lt $MaxPing) {
+                $SuccessCount++
+            }
+        }
+        
+        # At least 2 out of 3 must succeed
+        return ($SuccessCount -ge 2)
+    }
+    catch {
+        return $false
+    }
+}
+
+# NEW: Clean up expired blacklist entries
+function Update-NetworkBlacklist {
+    $CurrentTime = Get-Date
+    $ExpiredNetworks = @()
+    
+    foreach ($Network in $NetworkBlacklist.Keys) {
+        $BlockedUntil = $NetworkBlacklist[$Network]
+        if (($CurrentTime - $BlockedUntil).TotalSeconds -gt $BlacklistDuration) {
+            $ExpiredNetworks += $Network
+        }
+    }
+    
+    foreach ($Network in $ExpiredNetworks) {
+        $NetworkBlacklist.Remove($Network)
+        Log-Write "Blacklist: $Network is now available again." -Color DarkGray
+    }
+}
+
 Clear-Host
 Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host "       WLAN JUMPER - PROFESSIONAL" -ForegroundColor Cyan
+Write-Host "       WLAN JUMPER - PROFESSIONAL v2" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 Log-Write "System started. Logging to: $LogFile" -Color Gray
 Write-Host ""
@@ -47,6 +95,10 @@ Write-Host "2. INTERVAL (The 'Stopwatch')" -ForegroundColor White
 Write-Host "   -> How often the script checks your connection." -ForegroundColor DarkGray
 Write-Host "   -> Recommended: 3 Seconds (Best performance)." -ForegroundColor Green
 Write-Host "   -> Aggressive:  1 Second (Fastest, but may cause LAGS in games)." -ForegroundColor Red
+Write-Host ""
+Write-Host "3. NEW: Smart Network Blacklist" -ForegroundColor Magenta
+Write-Host "   -> Networks that fail are blocked for 5 minutes." -ForegroundColor DarkGray
+Write-Host "   -> Prevents endless reconnect loops!" -ForegroundColor Green
 Write-Host "--------------------" -ForegroundColor Yellow
 Write-Host ""
 
@@ -97,6 +149,7 @@ while (-not $ValidInterval) {
 
 Log-Write "Config: Switch after $MaxFailures failures." -Color Yellow
 Log-Write "Config: Ping every $Interval seconds." -Color Yellow
+Log-Write "Config: Failed networks blocked for 5 minutes." -Color Yellow
 
 # --- STEP 1: INITIAL SCAN (ONE-TIME ONLY) ---
 Log-Write "Building network list (One-time scan)..." -Color Gray
@@ -141,9 +194,13 @@ Log-Write "Monitoring active (Passive Mode)..." -Color Cyan
 
 # --- MAIN LOOP ---
 $FailCount = 0
+$LastSwitchedNetwork = $null
 
 while ($true) {
     try {
+        # Clean up expired blacklist entries
+        Update-NetworkBlacklist
+        
         # Only Ping, NO scanning! Prevents lags during normal operation.
         $PingResult = Test-Connection -ComputerName $PingTarget -Count 1 -ErrorAction SilentlyContinue
         $CurrentPing = if ($PingResult) { $PingResult.ResponseTime } else { $null }
@@ -175,12 +232,27 @@ while ($true) {
             if ($FailCount -ge $MaxFailures) {
                 Log-Write "Threshold reached! Initiating emergency scan & jump..." -Color Magenta
                 
+                # Get current network before switching
+                $CurrentSSID = (netsh wlan show interfaces | Select-String "^\s+SSID" | ForEach-Object { ($_ -split ":")[1].Trim() })
+                
+                # Add current network to blacklist
+                if ($CurrentSSID) {
+                    $NetworkBlacklist[$CurrentSSID] = Get-Date
+                    Log-Write "Blacklisting current network: $CurrentSSID (5 min cooldown)" -Color Red
+                }
+                
                 # Scan now (Lags don't matter because connection is lost anyway)
                 $BssidScan = netsh wlan show networks mode=bssid
                 $BestChoice = $null
                 $BestSignal = 0
 
                 foreach ($NetName in $MyAvailableNetworks) {
+                    # SKIP if network is blacklisted
+                    if ($NetworkBlacklist.ContainsKey($NetName)) {
+                        Log-Write "Skipping blacklisted network: $NetName" -Color DarkYellow
+                        continue
+                    }
+                    
                     $EscapedNet = [regex]::Escape($NetName)
                     
                     if ($BssidScan -match $EscapedNet) {
@@ -202,6 +274,7 @@ while ($true) {
 
                 if ($BestChoice) {
                     Log-Write "Jumping to strongest network: $BestChoice ($BestSignal%)" -Color Cyan
+                    $LastSwitchedNetwork = $BestChoice
                     netsh wlan connect name="$BestChoice"
                     
                     # Wait for interface
@@ -213,10 +286,31 @@ while ($true) {
                         if ($Status) { break }
                         $Retries++
                     }
-                    Log-Write "Connection re-established. Monitoring resumes." -Color Green
-                    $FailCount = 0 
+                    
+                    # NEW: Verify internet actually works
+                    Log-Write "Verifying internet connectivity..." -Color Gray
+                    Start-Sleep 2  # Give DHCP time to assign IP
+                    
+                    $InternetWorks = Test-InternetConnectivity
+                    
+                    if ($InternetWorks) {
+                        Log-Write "Internet verified: $BestChoice is working!" -Color Green
+                        Log-Write "Connection re-established. Monitoring resumes." -Color Green
+                        $FailCount = 0
+                    } else {
+                        Log-Write "WARNING: $BestChoice has no working internet!" -Color Red
+                        $NetworkBlacklist[$BestChoice] = Get-Date
+                        Log-Write "Added $BestChoice to blacklist." -Color Red
+                        # Don't reset FailCount - will trigger another switch immediately
+                    }
                 } else {
-                    Log-Write "Error: No better network found." -Color Red
+                    Log-Write "Error: No available networks found (all blacklisted or weak signal)." -Color Red
+                    
+                    # Emergency: Clear blacklist if ALL networks are blocked
+                    if ($NetworkBlacklist.Count -ge $MyAvailableNetworks.Count) {
+                        Log-Write "EMERGENCY: Clearing blacklist to allow retries..." -Color Magenta
+                        $NetworkBlacklist.Clear()
+                    }
                 }
             }
         }
